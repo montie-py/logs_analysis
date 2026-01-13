@@ -51,6 +51,7 @@ def too_many_sudos(line):
         if line.find("COMMAND") > 0:
             command = line[line.find("COMMAND") + 8:].split(";")[0].strip()
 
+
         print("date: %s, user: %s, tty: %s, pwd: %s, command: %s" % (date, user, tty, pwd, command))
 
 
