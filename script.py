@@ -1,4 +1,5 @@
 # This is a sample Python script.
+import json
 import subprocess
 import os
 from datetime import datetime, timedelta
@@ -40,23 +41,34 @@ def daily_logs():
                 break
 
 
+def notify_desktop(output):
+    title = "Auth alert"
+    subprocess.Popen(["gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications", "--object-path",
+                      "/org/freedesktop/Notifications", "--method", "org.freedesktop.Notifications.Notify",
+                      "AuthDetector", "0", "", title, output, "[]", "{}", "5000"])
+
+
+def notify_console(output):
+    subprocess.Popen(["echo", output])
+
+
 def sudo_alarm_logic(sudo_log_event):
     if not sudo_log_events :
         sudo_log_events.append(sudo_log_event)
     else:
-        mins_difference = ((sudo_log_event.timestamp - sudo_log_events[0].timestamp) < timedelta(minutes=5))
+        big_mins_difference = ((sudo_log_event.timestamp - sudo_log_events[0].timestamp) >= timedelta(minutes=5))
 
-        if mins_difference:
-            sudo_log_events.append(sudo_log_event)
-        else:
+        if big_mins_difference:
             sudo_log_events.clear()
 
+        sudo_log_events.append(sudo_log_event)
+
         if len(sudo_log_events) == 3:
-            os.system("paplay /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga")
-            print("⚠️ Anomaly detected: multiple failed SUDO logins:")
+            play_sound()
+            output = "⚠️ Anomaly detected: multiple failed SUDO logins:\n"
             for sudo_log_event in sudo_log_events:
                 date = sudo_log_event.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                print(
+                output += (
                     f'date: {date}'
                     f'| user: {sudo_log_event.user}'
                     f'| pwd: {sudo_log_event.pwd}'
@@ -65,13 +77,17 @@ def sudo_alarm_logic(sudo_log_event):
                     f'| message: {sudo_log_event.message}'
                 )
             sudo_log_events.clear()
+            
+            notify_console(output)
+            notify_desktop(output)
 
 
-
+def play_sound():
+    subprocess.Popen(["paplay", "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"])
 
 
 def too_many_sudos(line):
-    if line.find("sudo:") > 0:
+    if line.find("sudo: ") > 0 and line.find("incorrect") > 0:
         date_chunk = line.split(" ")[0]
         date = datetime.fromisoformat(date_chunk)
         user_message_chunk = line[line.find("sudo: ") + 6:].split(":")
@@ -88,8 +104,6 @@ def too_many_sudos(line):
         sudo_log_event = SudoLogEvent(date, user, message, tty, pwd, command)
 
         sudo_alarm_logic(sudo_log_event)
-
-        print("date: %s, user: %s, tty: %s, pwd: %s, command: %s" % (date, user, tty, pwd, command))
 
 
 def check_anomalies(output_line):
